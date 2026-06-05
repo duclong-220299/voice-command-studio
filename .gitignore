@@ -1,0 +1,48 @@
+# Build results
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.so
+*.dylib
+
+# Visual Studio files
+.vs/
+.vscode/
+*.sln.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ReSharper
+.idea/
+*.resharper
+*.resharper.user
+*.resharperprojects
+
+# Local user specific files
+appsettings.local.json
+*.local.json
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+
+# Runtime files
+*.log
+*.trace
+*.trx
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Data files
+voice_commands.dat
+
+# Temporary files
+*.tmp
+*.temp
