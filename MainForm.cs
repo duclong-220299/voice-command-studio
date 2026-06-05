@@ -18,6 +18,7 @@ namespace VoiceCommandApp
         private const int HOTKEY_PRESS = 1;
         private const int HOTKEY_RELEASE = 2;
         private const int WM_HOTKEY = 0x0312;
+        private const uint MOD_CONTROL = 2;
 
         // ── Data ─────────────────────────────────────────────────────────
         private VoiceCommandDatabase db;
@@ -49,10 +50,12 @@ namespace VoiceCommandApp
 
         public MainForm()
         {
+            Logger.Log("[FORM] Khởi tạo MainForm...");
             InitializeComponent();
             InitDB();
             InitAudio();
             UpdateAllStatus();
+            Logger.Log("[FORM] MainForm khởi tạo xong! Log file: " + Logger.GetLogPath());
         }
 
         private void InitDB()
@@ -67,7 +70,9 @@ namespace VoiceCommandApp
         {
             try
             {
+                Logger.Log("[AUDIO] Khởi tạo AudioRecorder...");
                 recorder = new AudioRecorder();
+                Logger.Log($"[AUDIO] Devices: {AudioRecorder.GetDeviceCount()}");
                 recorder.WaveformData += (s, samples) =>
                 {
                     BeginInvoke(new Action(() =>
@@ -83,6 +88,7 @@ namespace VoiceCommandApp
                 {
                     BeginInvoke(new Action(() =>
                     {
+                        Logger.Log($"[AUDIO] Recording complete - {samples.Length} samples");
                         if (isTestMode)
                             ProcessTestSamples(samples);
                         else if (currentTrainingCommand != null)
@@ -90,10 +96,12 @@ namespace VoiceCommandApp
                     }));
                 };
 
+                Logger.Log($"🎙 Microphone: {AudioRecorder.GetDeviceName(0)}");
                 Log($"🎙 Microphone: {AudioRecorder.GetDeviceName(0)}");
             }
             catch (Exception ex)
             {
+                Logger.Log($"[ERROR] Microphone: {ex}");
                 MessageBox.Show($"Lỗi microphone:\n{ex.Message}", "Lỗi",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
@@ -109,6 +117,7 @@ namespace VoiceCommandApp
             Font = new Font("Segoe UI", 9);
             StartPosition = FormStartPosition.CenterScreen;
             Icon = SystemIcons.Application;
+            KeyPreview = true; // 🔑 Capture all key events before child controls
 
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.DoubleBuffer, true);
 
@@ -199,14 +208,11 @@ namespace VoiceCommandApp
             mainTab.Selected += (s, e) =>
             {
                 isTestMode = mainTab.SelectedTab == testTab;
+                Logger.Log($"[TAB] Tab changed - isTestMode: {isTestMode}");
                 if (isTestMode)
                 {
-                    RegisterHotKey(Handle, HOTKEY_PRESS, 0, (uint)Keys.ControlKey);
+                    Logger.Log("[TAB] Vào chế độ Test - sẵn sàng bắt Ctrl key");
                     Log("🎯 Chế độ kiểm tra: Giữ Ctrl để nhận dạng giọng nói.");
-                }
-                else
-                {
-                    UnregisterHotKey(Handle, HOTKEY_PRESS);
                 }
             };
         }
@@ -803,25 +809,28 @@ namespace VoiceCommandApp
         }
 
         // ── Hotkey handling ──────────────────────────────────────────────
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            Logger.Log($"[KEY] KeyDown: {e.KeyCode}, Control: {e.Control}, isTestMode: {isTestMode}");
+            if (e.KeyCode == Keys.ControlKey && isTestMode && !isRecordingCtrl)
+            {
+                Logger.Log("[KEY] ✅ Ctrl pressed - bắt đầu ghi âm!");
+                isRecordingCtrl = true;
+                testWaveform.IsActive = true;
+                testWaveform.Clear();
+                testStatusLabel.Text = "🔴  Đang nghe... Thả Ctrl để nhận dạng";
+                testStatusLabel.ForeColor = Color.FromArgb(255, 80, 80);
+                ctrlHintLabel.Text = "🔴  Đang ghi âm...";
+                ctrlHintLabel.ForeColor = Color.FromArgb(255, 80, 80);
+                resultPanel.Visible = false;
+                recorder?.StartRecording();
+                Log("🎙  Đang nghe giọng nói...");
+            }
+        }
+
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_PRESS)
-            {
-                // Ctrl key down
-                if (!isRecordingCtrl && isTestMode)
-                {
-                    isRecordingCtrl = true;
-                    testWaveform.IsActive = true;
-                    testWaveform.Clear();
-                    testStatusLabel.Text = "🔴  Đang nghe... Thả Ctrl để nhận dạng";
-                    testStatusLabel.ForeColor = Color.FromArgb(255, 80, 80);
-                    ctrlHintLabel.Text = "🔴  Đang ghi âm...";
-                    ctrlHintLabel.ForeColor = Color.FromArgb(255, 80, 80);
-                    resultPanel.Visible = false;
-                    recorder?.StartRecording();
-                    Log("🎙  Đang nghe giọng nói...");
-                }
-            }
             base.WndProc(ref m);
         }
 
@@ -834,15 +843,18 @@ namespace VoiceCommandApp
         protected override void OnKeyUp(KeyEventArgs e)
         {
             base.OnKeyUp(e);
+            Logger.Log($"[KEY] KeyUp: {e.KeyCode}");
             if ((e.KeyCode == Keys.ControlKey || e.KeyCode == Keys.LControlKey || e.KeyCode == Keys.RControlKey)
                 && isRecordingCtrl && isTestMode)
             {
+                Logger.Log("[KEY] ✅ Ctrl released - dừng ghi âm!");
                 StopTestRecording();
             }
         }
 
         private void StopTestRecording()
         {
+            Logger.Log("[STOP] Stopping test recording...");
             isRecordingCtrl = false;
             testWaveform.IsActive = false;
             testStatusLabel.Text = "⏳  Đang phân tích...";
@@ -869,6 +881,7 @@ namespace VoiceCommandApp
             bool ctrlDown = (Control.ModifierKeys & Keys.Control) != 0;
             if (ctrlWasDown && !ctrlDown && isRecordingCtrl && isTestMode)
             {
+                Logger.Log("[IDLE] Ctrl released via idle check");
                 StopTestRecording();
             }
             ctrlWasDown = ctrlDown;
@@ -878,14 +891,17 @@ namespace VoiceCommandApp
         {
             try
             {
+                Logger.Log($"[TEST] Processing {samples?.Length ?? 0} samples");
                 if (samples == null || samples.Length < 800)
                 {
+                    Logger.Log("[TEST] ⚠️ Sample too short!");
                     testStatusLabel.Text = "⚠️  Không nghe thấy — thử lại!";
                     testStatusLabel.ForeColor = Color.FromArgb(255, 140, 30);
                     Log("⚠️  Mẫu quá ngắn hoặc không có âm thanh.");
                     return;
                 }
 
+                Logger.Log("[TEST] Extracting MFCC...");
                 float[] processed = MFCCExtractor.Normalize(samples);
                 processed = MFCCExtractor.TrimSilence(processed);
                 double[][] queryMFCC = MFCCExtractor.Extract(processed);
